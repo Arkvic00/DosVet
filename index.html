@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>3D BudPro V15</title>
+    <title>3D BudPro TITANIUM</title>
     
     <!-- Configuración PWA para Android/iOS -->
     <meta name="theme-color" content="#0f172a">
@@ -39,7 +39,7 @@
             font-family: 'Rajdhani', sans-serif;
             color: var(--text-main);
             transition: background-color 0.5s ease;
-            overscroll-behavior: none; /* Evita rebote en Android */
+            overscroll-behavior: none;
         }
         
         .font-cyber { font-family: 'Orbitron', sans-serif; }
@@ -53,8 +53,17 @@
         @keyframes moveNozzle { 0%, 100% { left: 40%; top: 30%; } 50% { left: 60%; top: 30%; } }
         @keyframes printGrow { 0% { width: 0; height: 0; opacity: 0.5; } 50% { width: 40px; height: 20px; opacity: 1; } 100% { width: 60px; height: 40px; opacity: 1; } }
 
+        /* G-Code Progress Bar (Idea 4) */
+        .gcode-progress-container { position: relative; height: 8px; background: #334155; border-radius: 4px; overflow: visible; }
+        .gcode-progress-fill { height: 100%; background: var(--primary); border-radius: 4px; position: relative; transition: width 1s ease-in-out; box-shadow: 0 0 8px var(--primary); }
+        .gcode-nozzle-tip {
+            position: absolute; top: -6px; right: -4px; width: 8px; height: 12px; background: #94a3b8;
+            clip-path: polygon(20% 0%, 80% 0%, 100% 70%, 50% 100%, 0% 70%);
+            z-index: 10; transition: right 1s ease-in-out;
+        }
+
         /* Scrollbar & Inputs */
-        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
         select { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e"); background-position: right 0.5rem center; background-repeat: no-repeat; background-size: 1.5em 1.5em; padding-right: 2rem; appearance: none; }
@@ -75,6 +84,52 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        // --- COMPONENTES VISUALES (Idea 1 & 4) ---
+        
+        // Tilt Card Component (Idea 1)
+        const TiltCard = ({ children, className }) => {
+            const cardRef = useRef(null);
+            const [transform, setTransform] = useState('');
+
+            const handleMove = (e) => {
+                const card = cardRef.current;
+                if(!card) return;
+                const { left, top, width, height } = card.getBoundingClientRect();
+                const x = (e.clientX - left) / width - 0.5;
+                const y = (e.clientY - top) / height - 0.5;
+                // Limitar rotación para que no sea exagerada
+                setTransform(`perspective(1000px) rotateY(${x * 10}deg) rotateX(${-y * 10}deg) scale3d(1.02, 1.02, 1.02)`);
+            };
+
+            const handleLeave = () => setTransform('perspective(1000px) rotateY(0) rotateX(0) scale3d(1, 1, 1)');
+
+            // Mobile Gyroscope parallax support would go here, kept simple for mouse/touch move
+            return (
+                <div 
+                    ref={cardRef}
+                    onMouseMove={handleMove}
+                    onMouseLeave={handleLeave}
+                    className={`transition-transform duration-100 ease-out transform-gpu ${className}`}
+                    style={{ transform, transformStyle: 'preserve-3d' }}
+                >
+                    {children}
+                    {/* Efecto de brillo */}
+                    <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent opacity-0 hover:opacity-100 transition-opacity pointer-events-none rounded-xl"></div>
+                </div>
+            );
+        };
+
+        // G-Code Progress Bar (Idea 4)
+        const GCodeProgress = ({ percent, color = 'bg-theme' }) => {
+            return (
+                <div className="gcode-progress-container w-full mt-1">
+                    <div className={`gcode-progress-fill ${color}`} style={{ width: `${percent}%` }}>
+                        <div className="gcode-nozzle-tip"></div>
+                    </div>
+                </div>
+            );
+        };
+
         // --- ICONOS ---
         const Icons = {
             Printer: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><path d="M6 14h12v8H6z"></path></svg>,
@@ -86,14 +141,15 @@
             Moon: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>,
             History: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20v-6M6 20V10M18 20V4"></path></svg>,
             Stats: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>,
-            Config: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+            Config: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
             Calendar: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>,
             Catalog: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>,
             Edit: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
             Plus: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
             Palette: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>,
             Tag: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>,
-            Cloud: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>
+            Cloud: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>,
+            X: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         };
 
         const DEFAULT_MATERIALS = [
@@ -112,7 +168,7 @@
             
             // Data & Config
             const [config, setConfig] = useState({
-                monthlyGoal: 12000, dailyHours: 6, daysPerMonth: 24, kwhCost: 3.5, maintenanceCost: 5, laborHourlyRate: 100, failureMargin: 10, resinCleaningCost: 15,
+                monthlyGoal: 12000, dailyHours: 16, daysPerMonth: 24, kwhCost: 3.5, maintenanceCost: 5, laborHourlyRate: 100, failureMargin: 10, resinCleaningCost: 15,
                 printers: [{ id: 1, name: "Ender 3", watts: 350, price: 5000 }]
             });
             const [inventory, setInventory] = useState([]);
@@ -140,7 +196,6 @@
                 const h = load('bp15_history'); if(h) setHistory(h);
                 const cat = load('bp15_catalog'); if(cat) setCatalog(cat);
 
-                // Theme Auto
                 const month = new Date().getMonth();
                 if (month === 9) document.body.classList.add('theme-halloween');
                 else if (month === 11) document.body.classList.add('theme-christmas');
@@ -155,6 +210,11 @@
                 localStorage.setItem('bp15_catalog', JSON.stringify(catalog));
                 if (oledMode) document.body.classList.add('theme-oled'); else document.body.classList.remove('theme-oled');
             }, [config, inventory, history, catalog, oledMode]);
+
+            // --- HELPER: HAPTICS (Idea 5) ---
+            const triggerHaptic = () => {
+                if (navigator.vibrate) navigator.vibrate(50);
+            };
 
             // --- CALCULATIONS ---
             const parseVal = (v) => parseFloat(v) || 0;
@@ -176,10 +236,12 @@
 
                 if(data.isMultiColor && data.extraFilaments) {
                     data.extraFilaments.forEach(fil => {
-                        const matType = DEFAULT_MATERIALS.find(m => m.id == fil.matId);
-                        const filCostPerGram = matType ? (matType.cost / matType.weight) : 0;
-                        materialCost += parseVal(fil.grams) * filCostPerGram;
-                        totalGrams += parseVal(fil.grams);
+                        const extraRoll = inventory.find(i => i.id == fil.invId);
+                        if (extraRoll) {
+                            const extraCostPerGram = (parseVal(extraRoll.rollCost) / parseVal(extraRoll.initialWeight));
+                            materialCost += parseVal(fil.grams) * extraCostPerGram;
+                            totalGrams += parseVal(fil.grams);
+                        }
                     });
                 }
 
@@ -198,14 +260,20 @@
                 const qty = parseVal(data.quantity) || 1;
 
                 let stockAlert = null;
-                if (selectedRoll && parseVal(selectedRoll.currentWeight) < (totalGrams * qty)) {
-                    stockAlert = { deficit: (totalGrams * qty) - parseVal(selectedRoll.currentWeight) };
+                if (selectedRoll && parseVal(selectedRoll.currentWeight) < (parseVal(data.grams) * qty)) {
+                    stockAlert = { deficit: (parseVal(data.grams) * qty) - parseVal(selectedRoll.currentWeight) };
                 }
+
+                const totalTimeHours = timeHours * qty;
+                const dailyHours = parseVal(config.dailyHours) || 1;
+                const daysToFinish = (totalTimeHours / dailyHours).toFixed(1);
 
                 return {
                     unitPrice: unitTotal,
                     totalPrice: (unitTotal * qty) + shipping,
                     totalGrams: totalGrams * qty,
+                    totalTimeHours: totalTimeHours,
+                    daysToFinish: daysToFinish,
                     breakdown: { mat: materialCost * qty, elec: electricity * qty, maint: maintenance * qty, labor: laborCost * qty, profit: (machineProfit * qty) + (margin * qty) + (laborCost * qty) },
                     stockAlert,
                     totalRollsForJob: Math.ceil((totalGrams * qty) / 1000)
@@ -216,19 +284,30 @@
             // --- ACTIONS ---
             const addToCart = () => {
                 if (!printData.pieceName) return alert("Falta nombre");
+                triggerHaptic(); // Haptic Feedback
                 setCart([...cart, { ...printData, result }]);
                 setPrintData({...printData, pieceName: '', quantity: 1, isMultiColor: false, extraFilaments: []});
             };
 
             const confirmSale = () => {
-                // CONFETTI
+                triggerHaptic(); // Haptic Feedback
                 confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#06b6d4', '#9333ea', '#ffffff'] });
                 
                 const newInv = [...inventory];
+                const deduct = (id, amount) => {
+                    const idx = newInv.findIndex(i => i.id == id);
+                    if(idx >= 0) newInv[idx].currentWeight = Math.max(0, newInv[idx].currentWeight - amount);
+                };
+
                 cart.forEach(item => {
+                    const qty = parseVal(item.quantity) || 1;
                     if (item.selectedInventoryId) {
-                        const idx = newInv.findIndex(i => i.id == item.selectedInventoryId);
-                        if (idx >= 0) newInv[idx].currentWeight -= item.result.totalGrams;
+                        deduct(item.selectedInventoryId, parseVal(item.grams) * qty);
+                    }
+                    if (item.isMultiColor && item.extraFilaments) {
+                        item.extraFilaments.forEach(fil => {
+                            if(fil.invId) deduct(fil.invId, parseVal(fil.grams) * qty);
+                        });
                     }
                 });
                 setInventory(newInv);
@@ -265,25 +344,35 @@
                 r.start();
             };
 
-            // --- CATALOG ---
             const handleManualImage = (e) => { if(e.target.files[0]){ const r = new FileReader(); r.onload = (ev) => setManualProd({...manualProd, image: ev.target.result}); r.readAsDataURL(e.target.files[0]); }};
             const saveManualToCatalog = () => { if(!manualProd.name) return; setCatalog([...catalog, { id: Date.now(), name: manualProd.name, image: manualProd.image, data: { grams: manualProd.grams, hours: manualProd.hours, minutes: manualProd.minutes, pieceName: manualProd.name } }]); setManualFormOpen(false); };
             const loadFromCatalog = (item) => { setPrintData(prev => ({ ...prev, ...item.data })); setView('calculator'); };
 
-            // --- STATS ---
             const calculateStats = () => {
                 let printerROI = {};
+                let grandTotalNet = 0;
                 config.printers.forEach(p => printerROI[p.id] = { net: 0, name: p.name, cost: p.price });
-                history.forEach(sale => { if(sale.printersUsage) sale.printersUsage.forEach(usage => { if(printerROI[usage.printerId]) printerROI[usage.printerId].net += usage.net; }); });
-                return { printerROI };
+                history.forEach(sale => { 
+                    if(sale.printersUsage) sale.printersUsage.forEach(usage => { 
+                        if(printerROI[usage.printerId]) {
+                            printerROI[usage.printerId].net += usage.net; 
+                            grandTotalNet += usage.net;
+                        }
+                    }); 
+                });
+                return { printerROI, grandTotalNet };
             };
             const stats = calculateStats();
+            const progressPercent = Math.min((stats.grandTotalNet / parseVal(config.monthlyGoal)) * 100, 100); // Simple goal tracking using net profit for progress bar logic
 
-            // --- EXTRAS ---
-            const addExtraFilament = () => setPrintData(prev => ({ ...prev, extraFilaments: [...(prev.extraFilaments || []), { matId: 1, grams: 0 }] }));
+            const addExtraFilament = () => setPrintData(prev => ({ ...prev, extraFilaments: [...(prev.extraFilaments || []), { invId: '', grams: 0 }] }));
             const updateExtraFilament = (idx, field, val) => { const n = [...printData.extraFilaments]; n[idx][field] = val; setPrintData(prev => ({ ...prev, extraFilaments: n })); };
+            const removeExtraFilament = (idx) => {
+                const newExtras = printData.extraFilaments.filter((_, i) => i !== idx);
+                setPrintData(prev => ({ ...prev, extraFilaments: newExtras }));
+            };
 
-            if (loading) return <div className="loader-container"><div className="nozzle"></div><div className="print-object"></div><div className="bed"></div><div className="text-cyan-500 font-cyber mt-32 animate-pulse">V15 OFFLINE...</div></div>;
+            if (loading) return <div className="loader-container"><div className="nozzle"></div><div className="print-object"></div><div className="bed"></div><div className="text-cyan-500 font-cyber mt-32 animate-pulse">TITANIUM EDITION...</div></div>;
 
             return (
                 <div className="min-h-screen pb-10 px-4 pt-4 flex flex-col items-center">
@@ -296,28 +385,31 @@
                         <div className="flex justify-between font-bold text-sm"><span>TOTAL:</span><span>${labelData.total.toFixed(2)}</span></div>
                     </div>}
 
-                    {/* Header */}
                     <div className="w-full max-w-md mb-4 flex justify-between items-center bg-opacity-50 bg-gray-900 p-3 rounded-xl border border-gray-700 backdrop-blur-sm">
                         <div>
                             <h1 className="text-xl font-cyber text-theme tracking-widest flex items-center gap-2">
-                                <Icons.Printer/> BUDPRO <span className="text-[10px] bg-cyan-900 text-cyan-200 px-1 rounded">V15</span>
+                                <Icons.Printer/> BUDPRO <span className="text-[10px] bg-cyan-900 text-cyan-200 px-1 rounded">TITANIUM</span>
                             </h1>
                             <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-1"><Icons.Calendar/> {new Date().toLocaleDateString()}</div>
+                        </div>
+                        <div className="text-right">
+                            <div className="w-24 h-2 bg-gray-800 rounded-full relative overflow-hidden mb-1">
+                                <GCodeProgress percent={progressPercent} />
+                            </div>
+                            <div className="text-[9px] text-green-400">${stats.grandTotalNet.toFixed(0)} / ${config.monthlyGoal}</div>
                         </div>
                         <button onClick={() => setOledMode(!oledMode)} className={`p-2 rounded-full ${oledMode ? 'text-yellow-400' : 'text-gray-400'}`}><Icons.Moon/></button>
                     </div>
 
-                    {/* Nav */}
                     <div className="w-full max-w-md grid grid-cols-6 gap-1 mb-4">
                         {[{id:'calculator', i:<Icons.Calc/>}, {id:'inventory', i:<Icons.Box/>}, {id:'catalog', i:<Icons.Catalog/>}, {id:'stats', i:<Icons.Stats/>}, {id:'history', i:<Icons.History/>}, {id:'config', i:<Icons.Config/>}].map(btn => (
                             <button key={btn.id} onClick={() => setView(btn.id)} className={`p-2 rounded flex justify-center items-center ${view === btn.id ? 'bg-theme text-white' : 'bg-gray-800 text-gray-400'}`}>{btn.i}</button>
                         ))}
                     </div>
 
-                    {/* CALCULATOR */}
                     {view === 'calculator' && (
                         <div className="w-full max-w-md space-y-4 animate-fade-in">
-                            <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 relative">
+                            <TiltCard className="bg-gray-800 border border-gray-700 rounded-xl p-5 relative">
                                 <div className="flex justify-between items-end mb-2"><span className="text-xs text-gray-400 font-bold">COTIZACIÓN</span><span className="text-4xl font-cyber text-white neon-text">${result.totalPrice.toFixed(2)}</span></div>
                                 <div className="grid grid-cols-2 gap-2 text-[10px] font-mono border-t border-gray-700 pt-3 mt-2">
                                     <div className="flex justify-between"><span>Material:</span><span className="text-gray-300">${result.breakdown.mat.toFixed(2)}</span></div>
@@ -326,8 +418,12 @@
                                     <div className="flex justify-between"><span>Depreciación:</span><span className="text-gray-300">${result.breakdown.maint.toFixed(2)}</span></div>
                                     <div className="flex justify-between col-span-2 text-green-400 font-bold border-t border-gray-700 pt-1 mt-1"><span>GANANCIA NETA:</span><span>${result.breakdown.profit.toFixed(2)}</span></div>
                                 </div>
+                                <div className="border-t border-gray-700 mt-2 pt-2 text-[10px] text-gray-400 text-right">
+                                    Tiempo Total: <span className="text-white font-bold">{result.totalTimeHours.toFixed(1)}h</span> 
+                                    <span className="text-gray-500"> ({result.daysToFinish} días de {config.dailyHours}h)</span>
+                                </div>
                                 {result.stockAlert && <div className="mt-2 bg-red-900/50 text-red-200 p-2 rounded flex items-center gap-2 text-xs animate-pulse border border-red-500"><Icons.Alert/> Falta material ({result.stockAlert.deficit}g)</div>}
-                            </div>
+                            </TiltCard>
 
                             <div className="space-y-3">
                                 <div className="flex gap-2">
@@ -342,15 +438,53 @@
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div><label className="label-fixed">MATERIAL</label><select value={printData.selectedMaterialId} onChange={e => setPrintData({...printData, selectedMaterialId: e.target.value, selectedInventoryId: ''})} className="w-full bg-gray-800 border border-gray-600 rounded p-3 text-white text-xs">{DEFAULT_MATERIALS.map(m => <option key={m.id} value={m.id}>{m.icon} {m.name}</option>)}</select></div>
-                                    <div><label className="label-fixed">STOCK</label><select value={printData.selectedInventoryId} onChange={e => setPrintData({...printData, selectedInventoryId: e.target.value})} className={`w-full bg-gray-800 border rounded p-3 text-white text-xs ${!printData.selectedInventoryId ? 'border-red-500' : 'border-gray-600'}`}><option value="">Rollo (Color)...</option>{inventory.filter(i => i.matId == printData.selectedMaterialId).map(i => <option key={i.id} value={i.id}>{i.color} ({i.currentWeight}g)</option>)}</select></div>
+                                <div>
+                                    <label className="label-fixed">MATERIAL</label>
+                                    <select value={printData.selectedMaterialId} onChange={e => setPrintData({...printData, selectedMaterialId: e.target.value, selectedInventoryId: ''})} className="w-full bg-gray-800 border border-gray-600 rounded p-3 text-white text-xs">
+                                        {DEFAULT_MATERIALS.map(m => <option key={m.id} value={m.id}>{m.icon} {m.name}</option>)}
+                                    </select>
                                 </div>
 
-                                {/* Multi-Color */}
+                                {/* Visual Stock Selector (Idea 9) */}
+                                <div>
+                                    <label className="label-fixed">STOCK DISPONIBLE</label>
+                                    <div className="flex overflow-x-auto gap-2 pb-2">
+                                        {inventory.filter(i => i.matId == printData.selectedMaterialId).length === 0 && <div className="text-xs text-gray-500 p-2">No hay stock</div>}
+                                        {inventory.filter(i => i.matId == printData.selectedMaterialId).map(i => (
+                                            <div 
+                                                key={i.id} 
+                                                onClick={() => setPrintData({...printData, selectedInventoryId: i.id})}
+                                                className={`flex-shrink-0 p-2 rounded border cursor-pointer min-w-[80px] text-center transition-all ${printData.selectedInventoryId == i.id ? 'border-theme bg-gray-700' : 'border-gray-600 bg-gray-800'}`}
+                                            >
+                                                <div className="text-xs font-bold text-white truncate">{i.color}</div>
+                                                <div className="text-[10px] text-gray-400">{i.currentWeight}g</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
                                 <div className="bg-gray-800 p-2 rounded border border-gray-700">
-                                    <div className="flex justify-between items-center mb-2"><label className="label-fixed text-white">MULTI-MATERIAL</label><button onClick={() => setPrintData({...printData, isMultiColor: !printData.isMultiColor})} className={`text-[10px] px-2 rounded ${printData.isMultiColor ? 'bg-theme text-white' : 'bg-gray-700 text-gray-400'}`}><Icons.Palette/></button></div>
-                                    {printData.isMultiColor && <div className="space-y-2">{printData.extraFilaments.map((fil, idx) => (<div key={idx} className="flex gap-2"><select value={fil.matId} onChange={(e) => updateExtraFilament(idx, 'matId', e.target.value)} className="flex-1 bg-gray-900 border-gray-600 rounded text-xs text-white p-1">{DEFAULT_MATERIALS.map(m => <option key={m.id} value={m.id}>{m.icon} {m.name}</option>)}</select><input type="number" placeholder="g" value={fil.grams} onChange={(e) => updateExtraFilament(idx, 'grams', e.target.value)} className="w-16 bg-gray-900 border-gray-600 rounded text-xs text-white p-1"/></div>))}<button onClick={addExtraFilament} className="text-[10px] text-theme">+ Agregar Filamento</button></div>}
+                                    <div className="flex justify-between items-center mb-2"><label className="label-fixed text-white">MULTI-MATERIAL (EXTRAS)</label><button onClick={() => setPrintData({...printData, isMultiColor: !printData.isMultiColor})} className={`text-[10px] px-2 rounded ${printData.isMultiColor ? 'bg-theme text-white' : 'bg-gray-700 text-gray-400'}`}><Icons.Palette/></button></div>
+                                    {printData.isMultiColor && (
+                                        <div className="space-y-2">
+                                            {printData.extraFilaments.map((fil, idx) => (
+                                                <div key={idx} className="flex gap-2 items-center">
+                                                    <div className="flex-1">
+                                                        <select value={fil.invId} onChange={(e) => updateExtraFilament(idx, 'invId', e.target.value)} className="w-full bg-gray-900 border-gray-600 rounded text-xs text-white p-1">
+                                                            <option value="">Rollo...</option>
+                                                            {inventory.map(inv => {
+                                                                const mat = DEFAULT_MATERIALS.find(m => m.id == inv.matId);
+                                                                return <option key={inv.id} value={inv.id}>{mat.icon} {mat.name} - {inv.color} ({inv.currentWeight}g)</option>
+                                                            })}
+                                                        </select>
+                                                    </div>
+                                                    <input type="number" placeholder="g" value={fil.grams} onChange={(e) => updateExtraFilament(idx, 'grams', e.target.value)} className="w-16 bg-gray-900 border-gray-600 rounded text-xs text-white p-1"/>
+                                                    <button onClick={() => removeExtraFilament(idx)} className="text-red-400"><Icons.X/></button>
+                                                </div>
+                                            ))}
+                                            <button onClick={addExtraFilament} className="text-[10px] text-theme">+ Agregar Filamento</button>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="grid grid-cols-3 gap-3">
@@ -365,14 +499,14 @@
                                 </div>
 
                                 <div><label className="label-fixed">IMPRESORA</label><select value={printData.selectedPrinterId} onChange={e => setPrintData({...printData, selectedPrinterId: e.target.value})} className="w-full bg-gray-800 border border-gray-600 rounded p-3 text-white text-xs">{config.printers.map(p => <option key={p.id} value={p.id}>{p.name} ({p.watts}W)</option>)}</select></div>
-                                <button onClick={addToCart} className="w-full bg-theme hover:opacity-80 text-white font-bold py-3 rounded-lg shadow-lg">AGREGAR AL CARRITO</button>
+                                <button onClick={addToCart} className="w-full bg-theme hover:opacity-80 text-white font-bold py-3 rounded-lg shadow-lg transform active:scale-95 transition-transform">AGREGAR AL CARRITO</button>
                             </div>
 
                             {cart.length > 0 && (
                                 <div className="bg-gray-900 border border-gray-700 rounded-xl p-4">
                                     <h3 className="text-xs text-gray-400 font-bold mb-2">EN COLA ({cart.length})</h3>
                                     {cart.map((item, idx) => (<div key={idx} className="flex justify-between text-sm text-white mb-1"><span>{item.quantity}x {item.pieceName}</span><span className="text-theme">${item.result.totalPrice.toFixed(0)}</span></div>))}
-                                    <button onClick={confirmSale} className="w-full mt-2 bg-green-600 text-white py-2 rounded font-bold text-xs">CONFIRMAR VENTA 🎊</button>
+                                    <button onClick={confirmSale} className="w-full mt-2 bg-green-600 text-white py-2 rounded font-bold text-xs transform active:scale-95 transition-transform">CONFIRMAR VENTA 🎊</button>
                                 </div>
                             )}
                         </div>
@@ -381,7 +515,7 @@
                     {/* INVENTORY */}
                     {view === 'inventory' && (
                         <div className="w-full max-w-md space-y-4 animate-fade-in">
-                            <div className={`bg-blue-900/10 border p-4 rounded-xl ${editingInvId ? 'border-yellow-500' : 'border-blue-500/30'}`}>
+                            <TiltCard className={`bg-blue-900/10 border p-4 rounded-xl ${editingInvId ? 'border-yellow-500' : 'border-blue-500/30'}`}>
                                 <h3 className={`${editingInvId ? 'text-yellow-400' : 'text-blue-400'} font-bold text-xs mb-2 flex items-center gap-2`}><Icons.Plus/> {editingInvId ? 'EDITAR' : 'NUEVO'}</h3>
                                 <div className="grid grid-cols-2 gap-2 mb-2">
                                     <div className="col-span-2"><label className="label-fixed">MATERIAL</label><select value={invForm.matId} onChange={e => setInvForm({...invForm, matId: e.target.value})} className="w-full bg-gray-800 border border-gray-600 rounded p-2 text-white text-xs">{DEFAULT_MATERIALS.map(m => <option key={m.id} value={m.id}>{m.icon} {m.name}</option>)}</select></div>
@@ -394,8 +528,8 @@
                                 </div>
                                 <button onClick={saveInventory} className={`w-full text-white py-2 rounded text-xs font-bold ${editingInvId ? 'bg-yellow-600' : 'bg-blue-600'}`}>{editingInvId ? 'ACTUALIZAR' : 'GUARDAR'}</button>
                                 {editingInvId && <button onClick={() => {setEditingInvId(null); setInvForm({ matId: 1, color: '', rollCost: 300, initialWeight: 1000, currentWeight: 1000, count: 1 })}} className="w-full text-red-400 text-xs mt-1">Cancelar</button>}
-                            </div>
-                            <div className="space-y-2">{inventory.map(item => (<div key={item.id} className="bg-gray-800 p-3 rounded border-l-4 border-blue-500 flex justify-between items-center"><div><div className="font-bold text-sm text-white">{DEFAULT_MATERIALS.find(m=>m.id==item.matId)?.icon} {item.color}</div><div className="text-xs text-gray-400">{item.currentWeight}g</div></div><div className="flex gap-2"><button onClick={()=>editInventory(item)} className="text-yellow-400"><Icons.Edit/></button><button onClick={()=>setInventory(inventory.filter(i=>i.id!==item.id))} className="text-red-400"><Icons.Trash/></button></div></div>))}</div>
+                            </TiltCard>
+                            <div className="space-y-2">{inventory.map(item => (<div key={item.id} className="bg-gray-800 p-3 rounded border-l-4 border-blue-500 flex justify-between items-center"><div><div className="font-bold text-sm text-white">{DEFAULT_MATERIALS.find(m=>m.id==item.matId)?.icon} {item.color}</div><div className="text-xs text-gray-400">{item.currentWeight}g / {item.initialWeight}g</div></div><div className="flex gap-2"><button onClick={()=>editInventory(item)} className="text-yellow-400"><Icons.Edit/></button><button onClick={()=>setInventory(inventory.filter(i=>i.id!==item.id))} className="text-red-400"><Icons.Trash/></button></div></div>))}</div>
                         </div>
                     )}
 
@@ -407,13 +541,20 @@
                                 const netProfit = stats.printerROI[p.id] ? stats.printerROI[p.id].net : 0;
                                 const roiPercent = p.price > 0 ? Math.min((netProfit / p.price) * 100, 100) : 100;
                                 return (
-                                    <div key={idx} className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                                    <TiltCard key={idx} className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                                         <div className="flex justify-between text-sm text-white mb-2"><span className="font-bold">{p.name}</span><span className="text-green-400">${netProfit.toFixed(0)} / ${p.price}</span></div>
-                                        <div className="w-full h-3 bg-gray-900 rounded-full overflow-hidden relative"><div className="absolute top-0 left-0 h-full bg-gradient-to-r from-purple-500 to-cyan-500" style={{width: `${roiPercent}%`}}></div></div>
+                                        <div className="w-full h-3 bg-gray-900 rounded-full overflow-hidden relative">
+                                            <GCodeProgress percent={roiPercent} color="bg-gradient-to-r from-purple-500 to-cyan-500"/>
+                                        </div>
                                         <div className="text-[10px] text-gray-500 mt-1 text-center">{roiPercent >= 100 ? '¡PAGADA!' : `Faltan $${(p.price - netProfit).toFixed(0)}`}</div>
-                                    </div>
+                                    </TiltCard>
                                 )
                             })}
+                            <TiltCard className="bg-gray-900 p-4 rounded-xl border border-green-500/30 text-center mt-4">
+                                <div className="text-xs text-gray-400 font-bold mb-1">ROI NETO TOTAL (TODAS LAS MÁQUINAS)</div>
+                                <div className="text-3xl font-cyber text-green-400 neon-text">${stats.grandTotalNet.toFixed(0)}</div>
+                                <div className="text-[10px] text-gray-500 mt-1">Ganancia neta acumulada histórica</div>
+                            </TiltCard>
                         </div>
                     )}
 
@@ -449,10 +590,12 @@
                             )}
                             <div className="grid grid-cols-2 gap-3">
                                 {catalog.map(item => (
-                                    <div key={item.id} className="bg-gray-800 border border-gray-700 rounded cursor-pointer relative overflow-hidden h-32" onClick={() => loadFromCatalog(item)}>
-                                        {item.image && <img src={item.image} className="absolute inset-0 w-full h-full object-cover opacity-60 product-card-img" onClick={(e) => {e.stopPropagation(); setZoomImage(item.image)}}/>}
-                                        <div className="absolute bottom-0 left-0 w-full p-2 bg-gradient-to-t from-black"><div className="font-bold text-white text-sm truncate">{item.name}</div></div>
-                                    </div>
+                                    <TiltCard key={item.id} className="bg-gray-800 border border-gray-700 rounded cursor-pointer relative overflow-hidden h-32">
+                                        <div onClick={() => loadFromCatalog(item)} className="w-full h-full">
+                                            {item.image && <img src={item.image} className="absolute inset-0 w-full h-full object-cover opacity-60 product-card-img" onClick={(e) => {e.stopPropagation(); setZoomImage(item.image)}}/>}
+                                            <div className="absolute bottom-0 left-0 w-full p-2 bg-gradient-to-t from-black"><div className="font-bold text-white text-sm truncate">{item.name}</div></div>
+                                        </div>
+                                    </TiltCard>
                                 ))}
                             </div>
                         </div>
@@ -501,6 +644,4 @@
     </script>
 </body>
 </html>
-
-
 
